@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0a0a0c">
+    <title>macOSAppstoreDecrypter</title>
+    <style>
+        :root{
+            --bg:#0a0a0c; --bg-soft:#0e0e11;
+            --surface:#161619; --surface-2:#1d1d21; --surface-3:#232329;
+            --line:#26262b; --line-2:#33333a;
+            --text:#f2f2f5; --text-2:#a6a6b0; --text-3:#71717c; --text-4:#4d4d57;
+            --accent:#3b82f6; --accent-press:#2f6fe0; --accent-soft:#12203c;
+            --green:#26c85f; --green-ink:#052e16; --green-soft:#0d2a1a;
+            --amber:#f5a524; --red:#f0555a; --purple:#8b5cf6;
+            --r-lg:15px; --r:11px; --r-sm:8px; --r-xs:6px;
+            --mono:ui-monospace,'SF Mono',Menlo,monospace;
+            /* critically-damped-ish spring for UI; snappier out-curve for enters */
+            --spring:cubic-bezier(.32,.72,0,1);
+            --out:cubic-bezier(.22,1,.36,1);
+        }
+        *{margin:0;padding:0;box-sizing:border-box}
+        html{-webkit-text-size-adjust:100%}
+        body{
+            font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif;
+            font-optical-sizing:auto;
+            background:var(--bg);
+            background-image:radial-gradient(120% 60% at 50% -10%,#101018 0%,var(--bg) 55%);
+            color:var(--text);min-height:100vh;line-height:1.5;
+            -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+        }
+        .container{max-width:620px;margin:0 auto;padding:1.1rem 1rem 4rem}
+
+        header{display:flex;align-items:flex-start;gap:.6rem;padding:1.4rem .1rem 1.1rem}
+        .brand{flex:1;min-width:0;display:flex;align-items:center;gap:.6rem}
+        .glyph{
+            width:34px;height:34px;border-radius:9px;flex-shrink:0;
+            display:grid;place-items:center;font-size:1rem;
+            background:linear-gradient(150deg,#2a2a31,#161619);
+            border:1px solid var(--line-2);
+            box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+        }
+        h1{font-size:1.5rem;font-weight:680;letter-spacing:-.035em;line-height:1}
+        .sub{color:var(--text-3);font-size:.72rem;margin-top:.22rem;letter-spacing:.005em}
+
+        /* ---- account bar ---- */
+        .acct{font-size:.75rem;color:var(--text-2);display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+        .acct .who{display:inline-flex;align-items:center;gap:.3rem;color:var(--text-2)}
+        .abtn{
+            padding:.4rem .72rem;border:1px solid var(--line-2);border-radius:var(--r-sm);
+            background:var(--surface);color:var(--text);cursor:pointer;font-size:.75rem;font-weight:500;
+            transition:transform .12s var(--out),background .18s,border-color .18s;
+        }
+        .abtn:hover{background:var(--surface-2);border-color:#3d3d45}
+        .abtn:active{transform:scale(.95)}
+        .abtn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+        .abtn.primary:hover{background:var(--accent-press)}
+        .acct .quota{color:#6ee7a0;font-variant-numeric:tabular-nums}
+        .acct .pend{color:var(--amber)}
+        .acct .open-badge{
+            display:inline-flex;align-items:center;gap:.3rem;padding:.3rem .6rem;border-radius:99px;
+            background:var(--green-soft);color:#6ee7a0;font-size:.7rem;font-weight:600;
+            border:1px solid #1c5136;
+        }
+
+        /* ---- sticky search chrome: translucent material ---- */
+        .search-wrap{
+            position:sticky;top:0;z-index:20;margin:0 -1rem;padding:.65rem 1rem .55rem;
+            background:rgba(10,10,12,.72);
+            -webkit-backdrop-filter:blur(22px) saturate(180%);
+            backdrop-filter:blur(22px) saturate(180%);
+        }
+        /* scroll-edge fade instead of a hard divider */
+        .search-wrap::after{
+            content:"";position:absolute;left:0;right:0;bottom:-14px;height:14px;pointer-events:none;
+            background:linear-gradient(var(--bg),transparent);
+        }
+        .mode-toggle{display:flex;gap:.4rem;margin-bottom:.5rem;align-items:center}
+        .seg{display:inline-flex;padding:2px;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:9px}
+        .mode-btn{
+            padding:.34rem .7rem;border-radius:7px;border:0;background:transparent;
+            color:var(--text-3);font-size:.72rem;font-weight:550;cursor:pointer;
+            transition:color .18s,background .22s var(--spring),transform .12s var(--out);
+        }
+        .mode-btn.active{background:var(--surface-3);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.3)}
+        .mode-btn:active{transform:scale(.96)}
+        #region{
+            margin-left:auto;padding:.38rem .55rem;border-radius:8px;border:1px solid var(--line);
+            background:var(--surface);color:var(--text);font-size:.72rem;font-weight:550;cursor:pointer;
+            transition:border-color .18s;
+        }
+        #region:hover{border-color:var(--line-2)}
+        .search-box{display:flex;gap:.5rem}
+        .search-box input{
+            flex:1;padding:.72rem .9rem;border-radius:var(--r);
+            border:1px solid var(--line);background:var(--surface);color:var(--text);
+            font-size:.9rem;outline:none;transition:border-color .18s,box-shadow .18s;
+        }
+        .search-box input::placeholder{color:var(--text-4)}
+        .search-box input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+        .search-box button{
+            padding:.72rem 1.15rem;border-radius:var(--r);border:0;
+            background:var(--accent);color:#fff;font-size:.875rem;font-weight:600;cursor:pointer;
+            transition:transform .12s var(--out),background .18s;
+        }
+        .search-box button:hover{background:var(--accent-press)}
+        .search-box button:active{transform:scale(.97)}
+
+        #pauseBanner{
+            background:linear-gradient(180deg,#2a1c05,#211603);color:var(--amber);
+            border:1px solid #5a3d0c;border-radius:var(--r);padding:.65rem .85rem;
+            margin:1rem 0 .2rem;font-size:.8rem;text-align:center;
+        }
+
+        /* ---- app cards ---- */
+        #list,#featured{display:flex;flex-direction:column;gap:.55rem}
+        #featured{margin-top:1rem}
+        #list{margin-top:.55rem}
+        .app-card{
+            background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+            overflow:hidden;position:relative;
+            box-shadow:0 1px 2px rgba(0,0,0,.25);
+            transition:border-color .25s,transform .2s var(--out),box-shadow .25s;
+        }
+        .app-card:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(0,0,0,.3)}
+        /* state encoded as a left severity stripe + border tint */
+        .app-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:transparent;transition:background .25s}
+        .app-card.active{border-color:#2a3a52}.app-card.active::before{background:var(--accent)}
+        .app-card.done{border-color:#1c4a30}.app-card.done::before{background:var(--green)}
+        .app-card.error{border-color:#4a2020}.app-card.error::before{background:var(--red)}
+        .app-row{display:flex;align-items:center;gap:.8rem;padding:.8rem .95rem}
+        .app-icon{width:50px;height:50px;border-radius:12px;flex-shrink:0;background:var(--surface-3);object-fit:cover;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)}
+        .app-info{flex:1;min-width:0}
+        .app-name{font-weight:590;font-size:.9rem;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .app-meta{color:var(--text-3);font-size:.72rem;margin-top:.18rem;font-variant-numeric:tabular-nums}
+        .app-bundle{color:var(--text-4);font-size:.66rem;font-family:var(--mono);margin-top:.15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .app-action{flex-shrink:0;display:flex;gap:.35rem;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+
+        .btn{
+            padding:.5rem .9rem;border-radius:9px;border:0;
+            font-size:.76rem;font-weight:600;cursor:pointer;white-space:nowrap;
+            display:inline-block;text-decoration:none;line-height:1.1;
+            transition:transform .12s var(--out),background .18s,opacity .18s;
+        }
+        .btn:active{transform:scale(.95)}
+        .btn-go{background:var(--accent);color:#fff}
+        .btn-go:hover{background:var(--accent-press)}
+        .btn-go:disabled{opacity:.4;cursor:default;background:var(--surface-3);color:var(--text-3)}
+        .btn-go:disabled:active{transform:none}
+        .btn-dl{background:var(--green);color:var(--green-ink)}
+        .btn-dl:hover{filter:brightness(1.08)}
+        .btn-cached{background:var(--surface-3);color:var(--text);border:1px solid var(--line-2)}
+        .btn-cached:hover{background:#2b2b32}
+        .btn-bin{background:transparent;color:var(--purple);border:1px solid #3a2c5c;font-size:.66rem;padding:.42rem .6rem}
+        .btn-bin:hover{background:#1b1430}
+
+        /* ---- job panel ---- */
+        .job-panel{border-top:1px solid var(--line);padding:.65rem .95rem .8rem;background:var(--bg-soft)}
+        .job-status-row{display:flex;align-items:center;gap:.5rem;font-size:.78rem;margin-bottom:.45rem}
+        .spinner{width:13px;height:13px;border:2px solid var(--line-2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .status-text{color:var(--text-2)}
+        .status-text.ok{color:#6ee7a0;font-weight:600}
+        .status-text.err{color:var(--red);font-weight:600}
+        .pbar{height:6px;background:var(--surface-3);border-radius:99px;overflow:hidden;margin:.45rem 0}
+        .pbar-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,#1c9d4a,var(--green));transition:width .45s var(--out)}
+
+        .log-box{
+            background:#08080a;border:1px solid var(--line);border-radius:var(--r-sm);
+            padding:.55rem .7rem;font-family:var(--mono);font-size:.66rem;color:var(--text-3);
+            line-height:1.65;max-height:180px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;
+        }
+        .log-box .l-ok{color:#6ee7a0}
+        .log-box .l-err{color:var(--red)}
+        .log-box .l-t{color:var(--text-4)}
+
+        /* ---- live queue ---- */
+        .queue-panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:.8rem .95rem;margin:1rem 0 .2rem}
+        .queue-title{font-size:.68rem;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.55rem;display:flex;align-items:center;gap:.45rem}
+        .queue-title .dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(38,200,95,.5);animation:pulse 1.6s ease-out infinite}
+        @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(38,200,95,.45)}70%{box-shadow:0 0 0 6px rgba(38,200,95,0)}100%{box-shadow:0 0 0 0 rgba(38,200,95,0)}}
+        .queue-item{display:flex;align-items:center;gap:.55rem;padding:.4rem 0;font-size:.76rem;border-top:1px solid var(--line)}
+        .queue-item:first-of-type{border-top:none}
+        .qi-pos{width:21px;height:21px;border-radius:6px;background:var(--surface-3);color:var(--text-2);font-size:.62rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-variant-numeric:tabular-nums}
+        .qi-pos.active{background:var(--green);color:var(--green-ink)}
+        .qi-name{flex:1;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .qi-status{color:var(--text-3);font-size:.66rem;flex-shrink:0}
+        .qi-status.active{color:#6ee7a0}
+        .qi-status.waiting{color:var(--amber)}
+
+        .feat-title{font-size:.68rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin:.4rem 0 -.1rem}
+        .empty{color:var(--text-4);font-size:.85rem;text-align:center;padding:3rem 1rem;line-height:1.6}
+        .empty code{font-family:var(--mono);color:var(--text-2);background:var(--surface);padding:.1rem .35rem;border-radius:5px}
+        .loading{text-align:center;padding:2.2rem;color:var(--text-3);font-size:.82rem}
+
+        /* ---- auth modal: dim scrim + materialize ---- */
+        #authWrap{
+            position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;padding:1rem;
+            background:rgba(4,4,6,.55);
+            -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+            opacity:0;visibility:hidden;transition:opacity .28s var(--out),visibility .28s;
+        }
+        #authWrap.show{opacity:1;visibility:visible}
+        .authcard{
+            background:var(--surface);border:1px solid var(--line-2);border-radius:18px;
+            padding:1.5rem;width:350px;max-width:100%;
+            box-shadow:0 24px 60px rgba(0,0,0,.55);
+            transform:scale(.93) translateY(10px);opacity:.4;
+            transition:transform .42s var(--spring),opacity .3s var(--out);
+        }
+        #authWrap.show .authcard{transform:none;opacity:1}
+        .authcard h3{font-size:1.15rem;font-weight:640;letter-spacing:-.02em;margin-bottom:.25rem}
+        .authcard .sub2{color:var(--text-3);font-size:.76rem;margin-bottom:1.1rem;line-height:1.5}
+        .authcard input{width:100%;padding:.68rem .8rem;border-radius:var(--r-sm);border:1px solid var(--line-2);background:#0a0a0c;color:var(--text);margin-bottom:.6rem;font-size:.9rem;outline:none;transition:border-color .18s,box-shadow .18s}
+        .authcard input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+        .authcard button{width:100%;padding:.72rem;border:0;border-radius:var(--r-sm);background:var(--accent);color:#fff;font-size:.9rem;font-weight:600;cursor:pointer;margin-bottom:.6rem;transition:transform .12s var(--out),background .18s}
+        .authcard button:hover{background:var(--accent-press)}
+        .authcard button:active{transform:scale(.98)}
+        .authcard .tog{color:#6ea8ff;cursor:pointer;font-size:.78rem;text-align:center}
+        .authcard .x{float:right;cursor:pointer;color:var(--text-3);font-size:.9rem;line-height:1}
+        .authcard .aerr{color:var(--red);font-size:.78rem;min-height:1rem;margin-bottom:.45rem}
+
+        @media(max-width:480px){
+            .container{padding:.9rem .8rem 3rem}
+            h1{font-size:1.35rem}
+            .app-icon{width:44px;height:44px;border-radius:10px}
+            .log-box{font-size:.62rem;max-height:150px}
+        }
+        /* apple-design §14 — accessibility signals */
+        @media(prefers-reduced-motion:reduce){
+            *{animation-duration:.001ms!important;animation-iteration-count:1!important}
+            .app-card,.btn,.abtn,.mode-btn,.search-box button,.authcard,.pbar-fill{transition:opacity .18s ease,color .18s ease!important;transform:none!important}
+            #authWrap{transition:opacity .18s ease}
+        }
+        @media(prefers-reduced-transparency:reduce){
+            .search-wrap{background:var(--bg);-webkit-backdrop-filter:none;backdrop-filter:none;border-bottom:1px solid var(--line)}
+            #authWrap{background:rgba(4,4,6,.9);-webkit-backdrop-filter:none;backdrop-filter:none}
+        }
+        @media(prefers-contrast:more){
+            :root{--line:#4a4a52;--line-2:#5c5c66;--text-2:#c8c8d0;--text-3:#9a9aa4}
+        }
+        ::-webkit-scrollbar{width:8px;height:8px}
+        ::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:99px}
+    </style>
+</head>
+<body>
+<div id="authWrap"><div class="authcard">
+    <span class="x" onclick="closeAuth()">✕</span>
+    <h3 id="authTitle">Đăng nhập</h3>
+    <div class="sub2" id="authSub">Đăng nhập để tải app mới. App có sẵn thì tải không cần đăng nhập.</div>
+    <div class="aerr" id="authErr"></div>
+    <input id="authName" placeholder="Tên của bạn" style="display:none">
+    <input id="authEmail" placeholder="Email" autocomplete="username">
+    <input id="authPass" type="password" placeholder="Mật khẩu" autocomplete="current-password">
+    <button id="authGo" onclick="authSubmit()">Đăng nhập</button>
+    <div class="tog" id="authTog" onclick="authToggle()">Chưa có tài khoản? Đăng ký</div>
+</div></div>
+<div class="container">
+    <header>
+        <div class="brand">
+            <div class="glyph">🔓</div>
+            <div>
+                <h1>macOSAppstoreDecrypter</h1>
+                <div class="sub">IPA Decrypt Service</div>
+            </div>
+        </div>
+        <div id="acctBar" class="acct"></div>
+    </header>
+    <div class="search-wrap">
+        <div class="mode-toggle">
+            <div class="seg">
+                <button class="mode-btn active" id="modeApp" onclick="setMode('app')">App Name</button>
+                <button class="mode-btn" id="modeBid" onclick="setMode('bid')">Bundle ID</button>
+            </div>
+            <select id="region" onchange="onRegionChange()" title="App Store region">
+                <option value="vn">🇻🇳 Vietnam</option>
+                <option value="cn">🇨🇳 China</option>
+                <option value="jp">🇯🇵 Japan</option>
+            </select>
+        </div>
+        <div class="search-box">
+            <input type="text" id="q" placeholder="Search iOS apps..." autocomplete="off">
+            <button id="searchBtn" onclick="doSearch()">Search</button>
+        </div>
+    </div>
+    <div id="pauseBanner" style="display:none"></div>
+    <div id="queuePanel"></div>
+    <div id="featured"></div>
+    <div id="list"></div>
+</div>
+<script>
+const activeJobs={};
+let polling=null;
+let searchResults=[];
+let mode='app';
+let region='vn';
+const REGION_FLAGS={vn:'🇻🇳',cn:'🇨🇳',jp:'🇯🇵'};
+function regionFlag(r){return REGION_FLAGS[r]||(r?r.toUpperCase():'');}
+
+document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch()});
+
+function onRegionChange(){
+    region=document.getElementById('region').value;
+    // Results/jobs are region-specific; clear the current view on switch.
+    searchResults=[];
+    for(const k in activeJobs)delete activeJobs[k];
+    document.getElementById('list').innerHTML='';
+    const q=document.getElementById('q').value.trim();
+    if(q.length>=2)doSearch();
+}
+
+function setMode(m){
+    mode=m;
+    document.getElementById('modeApp').className='mode-btn'+(m==='app'?' active':'');
+    document.getElementById('modeBid').className='mode-btn'+(m==='bid'?' active':'');
+    const input=document.getElementById('q');
+    const btn=document.getElementById('searchBtn');
+    if(m==='bid'){
+        input.placeholder='com.example.appname';
+        btn.textContent='Decrypt';
+    }else{
+        input.placeholder='Search iOS apps...';
+        btn.textContent='Search';
+    }
+    input.focus();
+}
+
+async function doSearch(){
+    const q=document.getElementById('q').value.trim();
+    if(q.length<2)return;
+    const el=document.getElementById('list');
+
+    if(mode==='bid'){
+        // Reject anything that isn't a reverse-DNS bundle id (links, app names…).
+        if(!/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)+$/.test(q)){
+            document.getElementById('featured').innerHTML='';
+            let why=/https?:|:\/\/|apps\.apple\.com|itunes\.|\//i.test(q)?'Đây là một đường link'
+                    :(q.includes(' ')?'Đây có vẻ là tên app':'Sai định dạng Bundle ID');
+            el.innerHTML='<div class="empty">❌ '+why+'.<br>Ô này chỉ nhận <b>Bundle ID</b> (vd: <code>com.mojang.minecraftpe</code>).<br>Muốn tìm theo <b>tên app</b> → bấm tab <b>App Name</b> ở trên.</div>';
+            return;
+        }
+        // Direct bundle ID — look up info then auto-start decrypt
+        document.getElementById('featured').innerHTML='';
+        el.innerHTML='<div class="loading">Looking up '+esc(q)+'...</div>';
+        try{
+            const r=await fetch('/api/v1/lookup?id='+encodeURIComponent(q)+'&region='+region);
+            const d=await r.json();
+            if(d.results&&d.results.length){
+                searchResults=d.results;
+                render();
+                reqDecrypt(q,d.results[0].name||q);
+            }else{
+                // App not in iTunes — still try to decrypt directly
+                searchResults=[{bundle_id:q,name:q,icon_url:'',version:'?',size_bytes:0,seller:'Unknown',price:0,is_whitelisted:false,is_cached:false,cached_version:null}];
+                render();
+                reqDecrypt(q,q);
+            }
+        }catch(e){
+            searchResults=[{bundle_id:q,name:q,icon_url:'',version:'?',size_bytes:0,seller:'Unknown',price:0,is_whitelisted:false,is_cached:false,cached_version:null}];
+            render();
+            reqDecrypt(q,q);
+        }
+        return;
+    }
+
+    document.getElementById('featured').innerHTML='';
+    el.innerHTML='<div class="loading">Searching...</div>';
+    try{
+        const r=await fetch('/api/v1/search?q='+encodeURIComponent(q)+'&region='+region);
+        const d=await r.json();
+        searchResults=d.results||[];
+        render();
+    }catch(e){el.innerHTML='<div class="empty">Search failed</div>'}
+}
+
+function render(){
+    const el=document.getElementById('list');
+    if(!searchResults.length&&!Object.keys(activeJobs).length){
+        el.innerHTML='<div class="empty">No free apps found</div>';return;
+    }
+    let html='';
+    for(const app of searchResults){
+        const bid=app.bundle_id;
+        const job=findJob(bid);
+        let cardClass='app-card';
+        if(job){
+            if(job.status==='completed')cardClass+=' done';
+            else if(job.status==='failed')cardClass+=' error';
+            else cardClass+=' active';
+        }
+        html+=`<div class="${cardClass}" id="card-${bid}">`;
+        html+=`<div class="app-row">`;
+        html+=`<img class="app-icon" src="${app.icon_url}" alt="">`;
+        html+=`<div class="app-info">`;
+        html+=`<div class="app-name">${esc(app.name)}</div>`;
+        let metaExtra='';
+        if(app.is_whitelisted)metaExtra+=' &middot; Purchased';
+        if(app.cached_version&&app.cached_version!==app.version)metaExtra+=` &middot; <span style="color:#f5a524">cached: v${esc(app.cached_version)}</span>`;
+        html+=`<div class="app-meta">${esc(app.seller)} &middot; v${esc(app.version)} &middot; ${fmtSize(app.size_bytes)}${metaExtra}</div>`;
+        html+=`<div class="app-bundle">${esc(bid)}</div>`;
+        html+=`</div>`;
+        html+=`<div class="app-action">`;
+        if(app.blocked){
+            html+=`<span style="color:#f0555a;font-size:.66rem;max-width:120px;text-align:right;line-height:1.3">${esc(app.blocked)}</span>`;
+        }else if(app.is_cached){
+            html+=`<a class="btn btn-cached" href="/api/v1/download/${bid}?region=${region}">v${esc(app.cached_version)}</a>`;
+            html+=`<a class="btn btn-bin" href="/api/v1/download/${bid}/binaries?region=${region}" title="Download decrypted Mach-O binaries only">BIN</a>`;
+        }else if(job&&job.status==='completed'){
+            html+=`<a class="btn btn-dl" href="${job.download_url}">Download</a>`;
+            html+=`<a class="btn btn-bin" href="/api/v1/download/${job.bundle_id}/binaries?region=${job.region||region}" title="Download decrypted Mach-O binaries only">BIN</a>`;
+        }else if(job&&job.status!=='failed'){
+            html+=`<button class="btn btn-go" disabled>Processing</button>`;
+        }else if(app.cached_version){
+            // A cached copy exists (maybe older, or from another region). Always
+            // let the user download it as-is; offer Update separately if the
+            // store has a different version.
+            html+=`<a class="btn btn-cached" href="/api/v1/download/${bid}?region=${region}" title="Download the cached version">⬇ v${esc(app.cached_version)}</a>`;
+            html+=`<a class="btn btn-bin" href="/api/v1/download/${bid}/binaries?region=${region}" title="Cached Mach-O binaries only">BIN</a>`;
+            if(app.version&&app.version!=='?'&&app.cached_version!==app.version){
+                html+=`<button class="btn btn-go" onclick="reqDecrypt('${esc(bid)}','${esc(app.name)}',true)" title="Re-download the latest version from the store">↻ v${esc(app.version)}</button>`;
+            }
+        }else{
+            html+=`<button class="btn btn-go" onclick="reqDecrypt('${esc(bid)}','${esc(app.name)}')">Decrypt</button>`;
+        }
+        html+=`</div></div>`;
+        if(job){
+            html+=renderJobPanel(job);
+        }
+        html+=`</div>`;
+    }
+    el.innerHTML=html;
+    // scroll logs
+    for(const jid in activeJobs){
+        const logEl=document.getElementById('logs-'+jid);
+        if(logEl)logEl.scrollTop=logEl.scrollHeight;
+    }
+}
+
+function renderJobPanel(j){
+    let s='<div class="job-panel"><div class="job-status-row">';
+    if(j.status==='completed'){
+        s+=`<span class="status-text ok">Completed</span>`;
+    }else if(j.status==='failed'){
+        s+=`<span class="status-text err">Failed${j.error?' &mdash; '+esc(j.error):''}</span>`;
+    }else{
+        s+=`<div class="spinner"></div><span class="status-text">${esc(j.detail||j.status)}</span>`;
+    }
+    s+=`</div>`;
+    if(j.status==='downloading'&&typeof j.progress==='number'){
+        s+=`<div class="pbar"><div class="pbar-fill" style="width:${j.progress}%"></div></div>`;
+    }
+    const logs=(j.logs||[]);
+    if(logs.length){
+        s+=`<div class="log-box" id="logs-${j.job_id}">`;
+        for(const l of logs){
+            let cls='';
+            if(l.includes('FAILED')||l.includes('EXCEPTION')||l.includes('err:'))cls='l-err';
+            else if(l.includes('complete')||l.includes('Ready')||l.includes('acquired')||l.includes('Cached'))cls='l-ok';
+            const parts=l.match(/^(\[[^\]]+\]) (.*)$/);
+            if(parts){
+                s+=`<span class="l-t">${esc(parts[1])}</span> <span class="${cls}">${esc(parts[2])}</span>\n`;
+            }else{
+                s+=`<span class="${cls}">${esc(l)}</span>\n`;
+            }
+        }
+        s+=`</div>`;
+    }
+    s+=`</div>`;
+    return s;
+}
+
+function findJob(bid){
+    for(const jid in activeJobs){
+        const j=activeJobs[jid];
+        if(j.bundle_id===bid&&(j.region||'vn')===region)return j;
+    }
+    return null;
+}
+
+async function reqDecrypt(bid,name,force){
+    try{
+        const body={bundle_id:bid,app_name:name,region:region};
+        if(force)body.force=true;
+        const r=await fetch('/api/v1/request',{
+            method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify(body)
+        });
+        const d=await r.json();
+        if(d.error){
+            if(d.need_login||r.status===401){openAuth('login',d.error);}
+            else alert(d.error);
+            return;
+        }
+        if(d.status==='completed'&&d.download_url){
+            window.location.href=d.download_url;return;
+        }
+        if(d.job_id){
+            activeJobs[d.job_id]={...d,logs:d.logs||[]};
+            startPolling();
+            render();
+            loadMe();  // refresh quota after using one
+        }
+    }catch(e){}
+}
+
+function startPolling(){
+    if(polling)return;
+    polling=setInterval(pollAll,1500);
+}
+
+async function pollAll(){
+    // Poll individual jobs
+    const ids=Object.keys(activeJobs);
+    let anyActive=false;
+    for(const id of ids){
+        try{
+            const r=await fetch('/api/v1/jobs/'+id);
+            const d=await r.json();
+            activeJobs[id]={...activeJobs[id],...d};
+            if(d.status!=='completed'&&d.status!=='failed')anyActive=true;
+        }catch(e){}
+    }
+    render();
+    // Poll global queue
+    await pollQueue();
+    if(!anyActive){clearInterval(polling);polling=null}
+}
+
+async function pollQueue(){
+    try{
+        const r=await fetch('/api/v1/queue');
+        const d=await r.json();
+        renderQueue(d.queue||[],d.workers||2);
+    }catch(e){}
+}
+
+function renderQueue(q,workers){
+    const el=document.getElementById('queuePanel');
+    if(!q.length){el.innerHTML='';return}
+    let html=`<div class="queue-panel">`;
+    html+=`<div class="queue-title"><span class="dot"></span> Queue (${workers} workers)</div>`;
+    q.forEach((item,i)=>{
+        const isDecrypting=item.status==='decrypting';
+        const isDownloading=['purchasing','downloading'].includes(item.status);
+        const isWaiting=item.status==='waiting_decrypt';
+        let posClass='';let statusClass='';let label=item.status;
+        if(isDecrypting){posClass=' active';statusClass=' active';label='decrypting'}
+        else if(isDownloading){statusClass=' active';label=item.status}
+        else if(isWaiting){statusClass=' waiting';label='waiting decrypt'}
+        html+=`<div class="queue-item">`;
+        html+=`<div class="qi-pos${posClass}">${isDecrypting?'&bull;':i+1}</div>`;
+        html+=`<div class="qi-name">${esc(item.app_name)}</div>`;
+        html+=`<div class="qi-status${statusClass}">${esc(label)}</div>`;
+        html+=`</div>`;
+    });
+    html+=`</div>`;
+    el.innerHTML=html;
+}
+
+// Poll queue on page load
+pollQueue();
+setInterval(pollQueue,3000);
+
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+function fmtSize(b){b=parseInt(b)||0;if(b<1048576)return(b/1024).toFixed(0)+' KB';if(b<1073741824)return(b/1048576).toFixed(1)+' MB';return(b/1073741824).toFixed(1)+' GB'}
+
+let featuredLoaded=false;
+
+async function loadFeatured(){
+    if(featuredLoaded)return;
+    featuredLoaded=true;
+    const el=document.getElementById('featured');
+
+    // Load cached apps with icons
+    try{
+        const cr=await fetch('/api/v1/cache');
+        const cd=await cr.json();
+        const cached=cd.cache||[];
+        if(cached.length){
+            let html='<div class="feat-title">Recently Decrypted</div>';
+            for(const c of cached.slice(0,8)){
+                const bid=c.bundle_id;
+                const creg=c.region||'vn';
+                const rflag=regionFlag(creg);
+                html+=`<div class="app-card done" id="cached-${esc(bid)}-${esc(creg)}"><div class="app-row">
+                    <img class="app-icon" src="" alt="" id="icon-${esc(bid)}-${esc(creg)}">
+                    <div class="app-info">
+                        <div class="app-name">${esc(c.app_name)}</div>
+                        <div class="app-meta">${rflag} &middot; v${esc(c.version)} &middot; ${fmtSize(c.file_size)}</div>
+                        <div class="app-bundle">${esc(bid)}</div>
+                    </div>
+                    <div class="app-action">
+                        <a class="btn btn-cached" href="/api/v1/download/${bid}?region=${creg}">v${esc(c.version)}</a>
+                        <a class="btn btn-bin" href="/api/v1/download/${bid}/binaries?region=${creg}">BIN</a>
+                    </div>
+                </div></div>`;
+            }
+            el.innerHTML=html;
+            // Load icons async
+            for(const c of cached.slice(0,8)){
+                const creg=c.region||'vn';
+                fetch('/api/v1/lookup?id='+encodeURIComponent(c.bundle_id)+'&region='+creg)
+                    .then(r=>r.json()).then(d=>{
+                        if(d.results&&d.results[0]&&d.results[0].icon_url){
+                            const img=document.getElementById('icon-'+c.bundle_id+'-'+creg);
+                            if(img)img.src=d.results[0].icon_url;
+                        }
+                    }).catch(()=>{});
+            }
+        }
+    }catch(e){}
+
+    // Load top free apps from App Store
+    try{
+        const r=await fetch('/api/v1/top');
+        const d=await r.json();
+        if(d.results&&d.results.length){
+            searchResults=d.results;
+            const listEl=document.getElementById('list');
+            listEl.innerHTML='<div class="feat-title">Top Free Apps</div>';
+            render();
+        }
+    }catch(e){}
+}
+
+async function checkPaused(){
+    try{
+        const d=await (await fetch('/health')).json();
+        const b=document.getElementById('pauseBanner');
+        if(d.paused){b.style.display='block';b.innerHTML='⏸ Đang tạm dừng nhận app mới (bảo trì/nâng cấp). Các app đang trong hàng đợi vẫn chạy.';}
+        else{b.style.display='none';}
+    }catch(e){}
+}
+checkPaused();
+setInterval(checkPaused,15000);
+// ---------- account / auth ----------
+let ME=null, OPEN=false, authMode='login';
+async function loadMe(){
+    try{const r=await (await fetch('/api/v1/me')).json();ME=r.user;OPEN=!!r.open_mode;}catch(e){ME=null;OPEN=false;}
+    renderAcct();
+}
+function renderAcct(){
+    const el=document.getElementById('acctBar');if(!el)return;
+    if(!ME){
+        const openBadge=OPEN?`<span class="open-badge">🔓 Mở · tải không giới hạn</span>`:'';
+        el.innerHTML=openBadge+
+                     `<button class="abtn primary" onclick="openAuth('login')">Đăng nhập</button>`+
+                     `<button class="abtn" onclick="openAuth('register')">Đăng ký</button>`;
+        return;
+    }
+    let q='';
+    if(ME.is_admin)q='<span class="quota">admin · ∞</span>';
+    else if(OPEN)q='<span class="open-badge">🔓 Mở · không giới hạn</span>';
+    else if(!ME.approved)q='<span class="pend">chờ duyệt</span>';
+    else q=`<span class="quota">còn ${ME.remaining}/${ME.limit} app hôm nay</span>`;
+    el.innerHTML=`<span class="who">👤 ${esc(ME.name)}</span> ${q} `+
+                 (ME.is_admin?`<button class="abtn" onclick="location.href='/admin'">Admin</button>`:``)+
+                 `<button class="abtn" onclick="logout()">Thoát</button>`;
+}
+function openAuth(mode,err){
+    authMode=mode||'login';
+    document.getElementById('authTitle').textContent=authMode==='login'?'Đăng nhập':'Đăng ký';
+    document.getElementById('authName').style.display=authMode==='register'?'block':'none';
+    document.getElementById('authGo').textContent=authMode==='login'?'Đăng nhập':'Đăng ký';
+    document.getElementById('authTog').textContent=authMode==='login'?'Chưa có tài khoản? Đăng ký':'Đã có tài khoản? Đăng nhập';
+    document.getElementById('authErr').textContent=err||'';
+    document.getElementById('authWrap').classList.add('show');
+    document.getElementById('authEmail').focus();
+}
+function closeAuth(){document.getElementById('authWrap').classList.remove('show')}
+function authToggle(){openAuth(authMode==='login'?'register':'login')}
+async function authSubmit(){
+    const email=document.getElementById('authEmail').value.trim();
+    const password=document.getElementById('authPass').value;
+    const name=document.getElementById('authName').value.trim();
+    const err=document.getElementById('authErr');err.textContent='';
+    const url=authMode==='login'?'/api/v1/login':'/api/v1/register';
+    const body=authMode==='login'?{email,password}:{email,name,password};
+    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(d.error){err.textContent=d.error;return;}
+    if(authMode==='register'){openAuth('login');err.textContent='';document.getElementById('authErr').textContent='✓ '+ (d.message||'Đăng ký xong, đăng nhập nhé');return;}
+    closeAuth();await loadMe();
+}
+async function logout(){await fetch('/api/v1/logout',{method:'POST'});ME=null;renderAcct();}
+loadMe();
+loadFeatured();
+</script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+#!/bin/bash
+# lidawake — keep this Mac fully awake even with the lid CLOSED (clamshell mode),
+# so background services (e.g. the macOSAppstoreDecrypter decrypt server) keep running.
+#
+# Same idea as lidrun / InsomniaX / Amphetamine's closed-display mode: it flips
+# the macOS power-management flag `disablesleep`, which stops the machine from
+# sleeping when the lid is shut. A tiny LaunchDaemon re-applies it at every boot
+# so the setting survives restarts.
+#
+# macOS 11+ (Big Sur), Apple Silicon or Intel.
+#   sudo lidawake on       # close the lid, stay awake (also persists across reboot)
+#   sudo lidawake off      # restore normal sleep
+#   lidawake status
+#
+# NOTE: keep the Mac on AC power while ON — with the lid closed it will run
+# indefinitely and would otherwise drain / heat up on battery.
+
+set -euo pipefail
+
+PLIST="/Library/LaunchDaemons/com.macOSAppstoreDecrypter.lidawake.plist"
+LABEL="com.macOSAppstoreDecrypter.lidawake"
+
+usage() { echo "usage: lidawake {on|off|status}"; exit 1; }
+
+need_root() {
+  if [ "$(id -u)" != "0" ]; then
+    echo "This needs root — re-run:  sudo lidawake ${1:-on}"; exit 1
+  fi
+}
+
+write_plist() {
+  cat > "$PLIST" <<PL
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>$LABEL</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/pmset</string>
+        <string>-a</string>
+        <string>disablesleep</string>
+        <string>1</string>
+    </array>
+    <key>RunAtLoad</key><true/>
+</dict>
+</plist>
+PL
+  chmod 644 "$PLIST"
+}
+
+case "${1:-status}" in
+  on)
+    need_root on
+    pmset -a disablesleep 1
+    write_plist
+    launchctl unload "$PLIST" 2>/dev/null || true
+    launchctl load -w "$PLIST"
+    echo "lidawake ON — you can close the lid now; the Mac stays awake and tasks keep running."
+    echo "(Keep it on AC power. Restore normal sleep with:  sudo lidawake off)"
+    pmset -g | grep -i SleepDisabled || true
+    ;;
+  off)
+    need_root off
+    launchctl unload -w "$PLIST" 2>/dev/null || true
+    rm -f "$PLIST"
+    pmset -a disablesleep 0
+    echo "lidawake OFF — normal sleep restored (closing the lid will sleep again)."
+    pmset -g | grep -i SleepDisabled || echo " SleepDisabled  0"
+    ;;
+  status)
+    if pmset -g | grep -qiE "SleepDisabled[[:space:]]+1"; then
+      echo "lidawake: ON  (lid can be closed, Mac will not sleep)"
+    else
+      echo "lidawake: OFF (normal sleep — closing the lid sleeps the Mac)"
+    fi
+    if [ -f "$PLIST" ]; then echo "boot persistence: installed"; else echo "boot persistence: not installed"; fi
+    ;;
+  *) usage ;;
+esac

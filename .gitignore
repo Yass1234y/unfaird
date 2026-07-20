@@ -1,0 +1,25 @@
+# Never commit secrets or runtime data
+.env
+regions.json
+*.log
+server.log
+
+# Local admin credential dump written on first run
+ADMIN_PASSWORD.txt
+
+# Runtime data dir (if kept inside the repo)
+data/
+ipas/
+*.db
+
+# Cloudflare tunnel credentials
+cert.pem
+*.json.cloudflared
+.cloudflared/
+
+# macOS / editor cruft
+.DS_Store
+__pycache__/
+*.pyc
+*.bak
+*.bak-*
